@@ -235,26 +235,86 @@ Position cap: 5–10% (fund-specific, see `portfolios.*.position_limits`). Secto
 ## Scheduled runs
 
 ### Daily (`daily_run.py`)
+
 Grades the watchlist tickers each morning and emits **only actionable alerts**:
-- Overall or portfolio sub-grade changed vs. prior run
-- Price crossed a grade-boundary on the ladder
-- Circuit breaker newly triggered
+- Overall or any fund sub-grade changed vs. prior run (e.g., `AAPL: Hold → Buy` overall; `MSFT: Hold → Buy` in the Aggressive sleeve)
+- Price crossed a grade-boundary on the price ladder (e.g., "dropped below Buy line $88.00")
+- Circuit breaker newly triggered (e.g., Altman Z dropped into distress)
 - `alert_price` hit for a watchlist entry
 
-Output: color-coded terminal list + dated markdown file in `runs/daily/`. Exit code is nonzero only on failure (not on "alerts present"). Runs in ~1–2 minutes on the free FMP tier.
+**Silence is the signal.** If nothing fires, a single line is printed: "No alerts. N names checked, all grades unchanged, no ladder breaches." A quiet morning is a good morning.
 
-Add `--dry-run` to test without writing files or hitting live APIs.
+**First run:** no prior baseline exists → state is recorded, no change-alerts fire. A plain "Baseline recorded" message is printed. Run again the next morning to start diffing.
+
+**Robustness:** if a ticker's data is unavailable it is skipped, noted in the run log, and the rest of the watchlist continues. A partial run is far better than a failed run.
+
+**Notification hook:** implement `_send_notification()` in `daily_run.py` and set `notifications.enabled: true` in `config.yaml` to wire alerts to email/SMS/Slack. The seam is there; the integration is left for you.
+
+```bash
+python daily_run.py                        # live run, results to terminal + file
+python daily_run.py --dry-run              # no data, no writes (exit 2)
+python daily_run.py --format md            # Markdown to stdout instead of terminal
+python daily_run.py --watchlist custom.yaml
+```
+
+**Where output lands:**
+```
+runs/
+  .daily_state.json          ← rolling latest state (diff baseline for next run)
+  daily/
+    YYYY-MM-DD.json          ← dated state snapshot (append-only history)
+    YYYY-MM-DD.md            ← dated alert report
+```
+
+**How to read an alert file** (`runs/daily/YYYY-MM-DD.md`):
+- `## Actionable Alerts` — tickers that need attention today with bullet-point reasons
+- `## Tickers — No Change` — names checked but nothing fired
+- `## Skipped` — tickers where data was unavailable (investigate separately)
+
+**How to edit the watchlist** (`watchlist.yaml`):
+```yaml
+watchlist:
+  - ticker: AAPL
+    notes: "Core holding candidate"
+  - ticker: JNJ
+    alert_price: 140.00    # fires when price ≤ this value
+```
+
+Runs in ~1–2 minutes on the free FMP tier for a 10–20 name watchlist.
+
+---
 
 ### Weekly (`weekly_run.py`)
-Runs the full Section 11 portfolio-construction funnel for all five funds: universe screen → sub-grade and rank → constrained optimization → mandate assembly. Outputs per-fund holdings tables, analytics, mandate checks, and a drift report vs. the prior week, written to `runs/weekly/YYYY-MM-DD/`.
 
-Expects FMP Starter+ for the universe endpoint. Implements batched calls, TTL caching, and checkpointing so an interrupted run resumes.
+Runs the full Section 11 portfolio-construction funnel for all five funds:
+universe screen → sub-grade / rank → constrained optimization → assemble.
 
-Add `--dry-run` to validate without writing files.
+**Output per run** (written to `runs/weekly/YYYY-MM-DD/`):
+| File | Contents |
+|------|----------|
+| `{fund}_holdings.md` | Holdings table: ticker, weight, grade, composite score |
+| `{fund}_analytics.json` | Expected return, vol, Sharpe, weights dict |
+| `{fund}_mandate.md` | Mandate check: PASS/FAIL + violations |
+| `{fund}_funnel.md` | Funnel transparency: how many names passed each of 4 stages |
+| `drift_report.md` | Weight drift vs. prior week (enters, exits, Δ weight) |
+
+**Checkpointing:** completed funds are saved to `.checkpoint.json` in the dated folder. An interrupted run resumes from where it left off — delete the checkpoint to force a full rebuild.
+
+**API tier required:** FMP Starter ($14/mo) or higher. The free tier (250 calls/day) cannot complete a full-universe screen in one day. Expected runtime: ~20–60 min for a 3,000-ticker universe on FMP Starter.
+
+```bash
+python weekly_run.py                        # rebuild all five funds
+python weekly_run.py --funds balanced,aggressive   # subset of funds
+python weekly_run.py --dry-run              # validate config only (exit 2)
+python weekly_run.py --no-save             # run but don't write files
+python weekly_run.py --no-resume           # ignore checkpoint, full rebuild
+```
+
+---
 
 ### Cron (macOS/Linux)
 ```cron
-# Daily at 7:00 AM
+# Daily at 7:00 AM weekdays
 0 7 * * 1-5  cd /path/to/Portfolio && python daily_run.py >> logs/daily.log 2>&1
 
 # Weekly Sunday at 6:00 AM
@@ -262,9 +322,15 @@ Add `--dry-run` to validate without writing files.
 ```
 
 ### Windows Task Scheduler
-1. Open Task Scheduler → Create Basic Task
-2. **Daily run**: Trigger = Daily, 7:00 AM (weekdays only → Advanced → repeat Mon–Fri); Action = `python.exe` with arguments `C:\Users\Jonat\OneDrive\Desktop\Portfolio\daily_run.py`; Start in = `C:\Users\Jonat\OneDrive\Desktop\Portfolio`
-3. **Weekly run**: Trigger = Weekly, Sunday 6:00 AM; same action with `weekly_run.py`
+1. Open Task Scheduler → **Create Basic Task**
+2. **Daily run**: Trigger = Daily, 7:00 AM; in Advanced Settings → check "Repeat Mon–Fri"; Action = `python.exe`, Arguments = `C:\Users\Jonat\OneDrive\Desktop\Portfolio\daily_run.py`; Start in = `C:\Users\Jonat\OneDrive\Desktop\Portfolio`
+3. **Weekly run**: Trigger = Weekly, Sunday 6:00 AM; same pattern with `weekly_run.py`
+4. In both tasks: set "Run whether user is logged on or not" + "Run with highest privileges" so the task fires unattended
+
+Exit code conventions:
+- `0` — success (alerts may or may not be present; check the output)
+- `1` — runtime error (data outage, bad config) — scheduler should alert the owner
+- `2` — `--dry-run` (intentional, not an error)
 
 ---
 
