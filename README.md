@@ -302,5 +302,5 @@ All backtest runs write dated reports to `runs/backtest/`. OOS results are clear
 | 9 | Portfolio construction funnel | ✅ Complete |
 | 10 | Reporters (JSON / MD / terminal) | ✅ Complete |
 | 11 | End-to-end CLI + worked example | ✅ Complete |
-| 12 | Backtesting & validation | ⬜ Pending |
-| 13 | Scheduled scripts (daily / weekly) | ⬜ Pending |
+| 12 | Backtesting & validation | ✅ Complete |
+| 13 | Scheduled scripts (daily / weekly) | ✅ Complete |
