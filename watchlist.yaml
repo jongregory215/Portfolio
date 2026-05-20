@@ -1,0 +1,18 @@
+# Daily watchlist — tickers graded every morning by daily_run.py
+# An alert fires when: grade changes, price crosses a ladder boundary,
+# a circuit breaker fires, or alert_price is hit.
+
+watchlist:
+  - ticker: AAPL
+    notes: "Large-cap tech — core holding candidate"
+  - ticker: MSFT
+    notes: "Large-cap tech — core holding candidate"
+  - ticker: JPM
+    notes: "Financials bellwether"
+  - ticker: JNJ
+    notes: "Defensive healthcare"
+    alert_price: 140.00     # alert if price drops to or below this
+  - ticker: BRK-B
+    notes: "Berkshire — conservative anchor"
+  - ticker: VTI
+    notes: "Broad market ETF — benchmark reference"

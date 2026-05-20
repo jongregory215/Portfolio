@@ -1,0 +1,35 @@
+# Stock Analysis Engine — Python 3.11+
+
+# Core data & numerics
+pandas>=2.1.0
+numpy>=1.26.0
+scipy>=1.11.0
+statsmodels>=0.14.0
+
+# Market data
+yfinance>=0.2.40
+requests>=2.31.0
+fredapi>=0.5.0
+
+# Technical analysis helpers
+ta>=0.11.0
+
+# Typed models & config
+pydantic>=2.5.0
+pyyaml>=6.0.1
+python-dotenv>=1.0.0
+
+# CLI & terminal
+typer[all]>=0.9.0
+rich>=13.7.0
+
+# Portfolio optimization
+cvxpy>=1.4.0
+scikit-learn>=1.4.0
+
+# Backtesting (optional — requires Nasdaq Data Link subscription for PIT data)
+nasdaq-data-link>=1.0.4
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0

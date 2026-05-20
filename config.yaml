@@ -1,0 +1,456 @@
+# Stock Analysis Engine — Configuration
+# All weights, thresholds, and model assumptions live here.
+# Edit this file to tune the model; no code changes required.
+# See README.md §Implementation Decisions for the rationale behind each default.
+
+# ─────────────────────────────────────────────
+# 1. Data providers
+# ─────────────────────────────────────────────
+data:
+  providers:
+    price:        yfinance     # free, no API key
+    fundamentals: fmp          # requires FMP_API_KEY env var
+    estimates:    fmp
+    macro:        fred         # requires FRED_API_KEY env var
+
+  cache:
+    directory: "~/.stockgrader/cache"
+    ttl:
+      intraday_price:  900     # 15 min
+      eod_price:       86400   # 24 hr
+      fundamentals:    86400   # 24 hr
+      estimates:       86400   # 24 hr
+      macro:           3600    # 1 hr
+      universe:        604800  # 7 days
+      peer_list:       86400   # 24 hr
+
+  history_years: 3             # years of daily OHLCV for technical / quant engines
+
+# ─────────────────────────────────────────────
+# 2. Top-level engine weights (overall grade)
+# ─────────────────────────────────────────────
+weights:
+  overall:
+    fundamental:  0.50
+    technical:    0.30
+    quantitative: 0.20
+
+# ─────────────────────────────────────────────
+# 3. Fundamental engine
+# ─────────────────────────────────────────────
+fundamental:
+  pillar_weights:
+    valuation:          0.30
+    profitability:      0.25
+    growth:             0.20
+    financial_health:   0.15
+    capital_allocation: 0.10
+
+  peer_set:
+    # Decision §1: default is gics_sub_industry with min-peer fallback to gics_industry
+    method: gics_sub_industry   # gics_sector | gics_industry | gics_sub_industry | market_cap_band
+    min_peers: 5                # fall back to gics_industry if fewer than this
+
+  normalization:
+    # Valuation & profitability use peer-relative percentile; solvency uses absolute thresholds
+    percentile_fields:
+      - pe_trailing
+      - pe_forward
+      - pb
+      - ps
+      - ev_ebitda
+      - peg
+      - gross_margin
+      - operating_margin
+      - net_margin
+      - roe
+      - roa
+      - roic
+      - revenue_cagr_3yr
+      - eps_cagr_3yr
+    absolute_fields:
+      - current_ratio
+      - quick_ratio
+      - debt_equity
+      - interest_coverage
+      - altman_z
+      - piotroski_f
+
+  altman_z:
+    distress_threshold: 1.8    # circuit breaker: cap at Sell if Z < this
+    grey_zone_threshold: 3.0   # warn if Z < this
+
+  piotroski_f:
+    strong_threshold: 7        # 7–9 = strong financial position
+    weak_threshold:   3        # 0–3 = weak
+
+  # Decision §4: missing-data policy
+  missing_data:
+    policy: downweight          # downweight | impute | skip
+    impute_method: sector_median
+    # downweight: reduce pillar weight proportional to fraction of available fields
+    # impute: replace with sector median before scoring
+
+# ─────────────────────────────────────────────
+# 4. Technical engine
+# ─────────────────────────────────────────────
+technical:
+  pillar_weights:
+    trend:            0.40
+    momentum:         0.35
+    volume_structure: 0.25
+
+  indicators:
+    sma_periods:    [20, 50, 100, 200]
+    ema_periods:    [20, 50]
+    rsi_period:     14
+    macd:           { fast: 12, slow: 26, signal: 9 }
+    atr_period:     14
+    bollinger:      { period: 20, std_dev: 2 }
+    adx_period:     14
+    stochastic:     { k_period: 14, d_period: 3 }
+
+  regime:
+    # Regime-aware scoring: RSI is evaluated relative to trend regime
+    strong_uptrend_adx:   25
+    strong_downtrend_adx: 25
+    rsi_overbought:       70
+    rsi_oversold:         30
+    # An RSI of 75 is a positive momentum signal in a strong uptrend (ADX>25, price>SMA200)
+    # but an overbought warning in a sideways regime (ADX<20)
+
+# ─────────────────────────────────────────────
+# 5. Quantitative engine
+# ─────────────────────────────────────────────
+quantitative:
+  # Decision §3: S&P 500 as cross-sectional factor universe
+  factor_universe: sp500        # sp500 | russell1000 | russell3000
+
+  factor_weights_in_quant_score:
+    value:          0.20
+    quality:        0.30
+    momentum:       0.25
+    size:           0.10
+    low_volatility: 0.15
+
+  # Factors where a higher z-score is scored positively
+  favorable_factors:
+    - value
+    - quality
+    - momentum
+    - low_volatility     # high z-score = low vol = good for risk-adjusted score
+
+  fama_french:
+    enabled: true
+    model: FF5             # FF3 | FF5 — uses Ken French Data Library (free)
+
+  risk_metrics:
+    benchmark_equity: SPY
+    benchmark_bond:   AGG
+    # Sharpe/Sortino use FRED risk-free rate (DGS3MO); fallback below
+    risk_free_fallback: 0.05
+
+# ─────────────────────────────────────────────
+# 6. Fair value / price ladder
+# ─────────────────────────────────────────────
+fair_value:
+  # Decision §2: two-stage DCF with explicit 5-yr forecast + 5-yr transition + terminal
+  dcf:
+    stage1_years:        5
+    stage2_years:        5
+    terminal_growth_rate: 0.03    # 3% perpetual nominal growth
+    equity_risk_premium:  0.055   # ERP above risk-free rate
+    debt_spread:          0.015   # average debt spread over risk-free
+    tax_rate:             0.21    # effective corporate tax rate for WACC
+
+  # Margin-of-safety bands around fair value
+  # Quality-adjusted: high-quality businesses earn tighter required discounts
+  margin_of_safety:
+    gotta_have_discount:  0.30    # need 30% below FV for Gotta Have (base quality)
+    buy_discount:         0.15    # 15% below FV for Buy
+    sell_premium:         0.15    # 15% above FV triggers Sell
+    stay_away_premium:    0.40    # 40% above FV triggers Stay Away
+    quality_adjustment:   true
+    # Reduces MoS band by up to quality_band_scale * quality_fraction
+    # e.g., composite=90 → reduce MoS by 50%; a great business needs less margin of safety
+    quality_band_scale:   0.50
+
+  # Sensitivity grid axes (relative deltas from base assumptions)
+  sensitivity_grid:
+    growth_delta:         [-0.02, 0.00, 0.02]
+    discount_rate_delta:  [-0.01, 0.00, 0.01]
+
+# ─────────────────────────────────────────────
+# 7. Grade bands
+# ─────────────────────────────────────────────
+grade_bands:
+  stay_away: [0,   19]
+  sell:      [20,  39]
+  hold:      [40,  59]
+  buy:       [60,  79]
+  gotta_have: [80, 100]
+
+# ─────────────────────────────────────────────
+# 8. Circuit breakers
+# ─────────────────────────────────────────────
+circuit_breakers:
+  altman_z_distress:
+    enabled: true
+    threshold: 1.8           # Z < 1.8 = distress zone
+    cap_at: sell
+
+  negative_fcf_high_leverage:
+    enabled: true
+    fcf_negative_years: 2    # FCF negative for N consecutive years
+    min_debt_equity:    1.5  # combined with high leverage
+    cap_at: sell
+
+  going_concern:
+    enabled: true
+    cap_at: stay_away        # any going-concern flag → Stay Away
+
+  extreme_overvaluation:
+    enabled: true
+    # Price exceeds the Stay Away threshold on the ladder → cap at Sell
+    # (great company, terrible price is still a Sell, not Gotta Have)
+    cap_at: sell
+
+# ─────────────────────────────────────────────
+# 9. Portfolio profiles
+# ─────────────────────────────────────────────
+portfolios:
+
+  very_conservative:
+    label: "Very Conservative (Risk 1–20)"
+    equity_pct:   0.15
+    bond_pct:     0.85
+    return_target: [0.02, 0.03]
+    weights:
+      fundamental:  0.55
+      technical:    0.15
+      quantitative: 0.30
+    factor_preferences:       # multiplier on factor z-score contribution
+      low_volatility:  2.0    # strongly rewarded
+      quality:         2.0
+      value:           1.5
+      momentum:        0.5    # penalized
+      size:            0.5    # large-cap bias
+    eligibility:
+      max_beta:         0.8
+      min_market_cap:   10_000_000_000   # $10B
+      require_dividend: true
+      max_drawdown_3yr: 0.30
+      min_altman_z:     3.0
+      max_debt_equity:  0.5
+    optimizer: min_variance
+    position_limits: { max: 0.05, min: 0.01 }
+    sector_limit:     0.20
+    valuation_penalty: high
+
+  conservative:
+    label: "Conservative (Risk 21–40)"
+    equity_pct:   0.30
+    bond_pct:     0.70
+    return_target: [0.03, 0.05]
+    weights:
+      fundamental:  0.50
+      technical:    0.20
+      quantitative: 0.30
+    factor_preferences:
+      low_volatility:  1.8
+      quality:         1.8
+      value:           1.5
+      momentum:        0.8
+      size:            0.7
+    eligibility:
+      max_beta:         0.9
+      min_market_cap:   5_000_000_000    # $5B
+      require_dividend: true
+      max_drawdown_3yr: 0.35
+      min_altman_z:     2.7
+      max_debt_equity:  0.8
+    # Decision §9: target-return MV with risk-parity cross-check
+    optimizer: target_return_mv
+    position_limits: { max: 0.06, min: 0.01 }
+    sector_limit:     0.22
+    valuation_penalty: medium_high
+
+  balanced:
+    label: "Balanced (Risk 41–60)"
+    equity_pct:   0.55
+    bond_pct:     0.45
+    return_target: [0.05, 0.07]
+    weights:
+      fundamental:  0.50
+      technical:    0.30
+      quantitative: 0.20
+    factor_preferences:
+      quality:         1.3
+      value:           1.3
+      momentum:        1.3
+      low_volatility:  1.0
+      size:            1.0
+    eligibility:
+      max_beta:         1.2
+      min_market_cap:   2_000_000_000    # $2B
+      require_dividend: false
+      max_drawdown_3yr: 0.45
+      min_altman_z:     1.8
+      max_debt_equity:  2.0
+    optimizer: mean_variance
+    position_limits: { max: 0.07, min: 0.01 }
+    sector_limit:     0.25
+    valuation_penalty: medium
+
+  aggressive:
+    label: "Aggressive (Risk 61–80)"
+    equity_pct:   0.75
+    bond_pct:     0.25
+    return_target: [0.07, 0.09]
+    weights:
+      fundamental:  0.40
+      technical:    0.40
+      quantitative: 0.20
+    factor_preferences:
+      momentum:        1.8
+      quality:         1.3
+      value:           1.0
+      low_volatility:  0.8
+      size:            1.1
+    eligibility:
+      max_beta:         1.5
+      min_market_cap:   500_000_000     # $500M
+      require_dividend: false
+      max_drawdown_3yr: 0.55
+      min_altman_z:     1.5
+      max_debt_equity:  3.0
+    optimizer: max_sharpe
+    position_limits: { max: 0.08, min: 0.01 }
+    sector_limit:     0.28
+    valuation_penalty: low_medium
+
+  very_aggressive:
+    label: "Very Aggressive (Risk 81–99)"
+    equity_pct:   0.90
+    bond_pct:     0.10
+    return_target: [0.09, 0.12]
+    weights:
+      fundamental:  0.35
+      technical:    0.40
+      quantitative: 0.25
+    factor_preferences:
+      momentum:        2.0
+      size:            1.3       # small-cap tolerated
+      quality:         1.0
+      value:           0.8
+      low_volatility:  0.5
+    eligibility:
+      max_beta:         null     # no beta cap
+      min_market_cap:   300_000_000    # $300M
+      require_dividend: false
+      max_drawdown_3yr: null     # no drawdown cap
+      min_altman_z:     1.0
+      max_debt_equity:  null     # no leverage cap
+    optimizer: max_sharpe
+    position_limits: { max: 0.10, min: 0.01 }
+    sector_limit:     0.30
+    valuation_penalty: low
+
+# ─────────────────────────────────────────────
+# 10. Bond ETF candidate set (bond sleeve)
+# ─────────────────────────────────────────────
+bond_candidates:
+  short_duration:
+    - { ticker: SHY,  name: "iShares 1-3 Year Treasury Bond",        duration_yrs: 1.9, credit: treasury }
+    - { ticker: VGSH, name: "Vanguard Short-Term Treasury ETF",       duration_yrs: 1.9, credit: treasury }
+    - { ticker: VCSH, name: "Vanguard Short-Term Corporate Bond ETF", duration_yrs: 2.8, credit: ig_corp  }
+    - { ticker: BSV,  name: "Vanguard Short-Term Bond ETF",           duration_yrs: 2.7, credit: aggregate}
+  intermediate_duration:
+    - { ticker: IEI,  name: "iShares 3-7 Year Treasury Bond ETF",    duration_yrs: 4.5, credit: treasury }
+    - { ticker: IEF,  name: "iShares 7-10 Year Treasury Bond ETF",   duration_yrs: 7.5, credit: treasury }
+    - { ticker: AGG,  name: "iShares Core US Aggregate Bond ETF",    duration_yrs: 6.0, credit: aggregate}
+    - { ticker: BND,  name: "Vanguard Total Bond Market ETF",        duration_yrs: 6.3, credit: aggregate}
+    - { ticker: BIV,  name: "Vanguard Intermediate-Term Bond ETF",   duration_yrs: 6.4, credit: aggregate}
+    - { ticker: VCIT, name: "Vanguard Intermediate Corp Bond ETF",   duration_yrs: 6.4, credit: ig_corp  }
+    - { ticker: LQD,  name: "iShares iBoxx USD IG Corp Bond ETF",    duration_yrs: 8.6, credit: ig_corp  }
+  long_duration:
+    - { ticker: TLT,  name: "iShares 20+ Year Treasury Bond ETF",    duration_yrs: 16.5, credit: treasury}
+    - { ticker: VGLT, name: "Vanguard Long-Term Treasury ETF",        duration_yrs: 14.4, credit: treasury}
+  inflation_protected:
+    - { ticker: TIP,  name: "iShares TIPS Bond ETF",                 duration_yrs: 7.3, credit: tips    }
+    - { ticker: SCHP, name: "Schwab US TIPS ETF",                    duration_yrs: 7.2, credit: tips    }
+
+# ─────────────────────────────────────────────
+# 11. Portfolio optimizer settings
+# ─────────────────────────────────────────────
+optimizer:
+  max_candidate_pool: 40       # Stage 2 cap — feed at most N names to the optimizer
+  long_only: true
+
+  # Decision §8: expected-return inputs
+  # 'shrunk' = Ledoit-Wolf shrinkage of sample mean toward grand mean
+  # 'black_litterman' = BL blend using sub-grade conviction as views
+  # 'cma' = capital-market assumption constants (edit cma_returns below)
+  expected_returns: shrunk
+
+  covariance: ledoit_wolf      # ledoit_wolf | sample
+
+  # Black-Litterman parameters (used only if expected_returns: black_litterman)
+  black_litterman:
+    tau: 0.05
+    # Maps sub-grade composite 0–100 to view uncertainty (lower = more confident)
+    confidence_scale: 0.20
+
+  # Long-run CMA returns by asset class (used if expected_returns: cma)
+  # Source: blend of major bank 10-yr capital market assumptions; update annually
+  cma_returns:
+    us_large_cap_equity: 0.070
+    us_small_cap_equity: 0.085
+    intl_developed_equity: 0.075
+    emerging_equity: 0.090
+    us_agg_bond: 0.040
+    us_treasury: 0.038
+    us_ig_corp: 0.045
+    us_tips: 0.035
+
+  risk_free_source: fred       # fred | hardcode
+  risk_free_fallback: 0.05
+
+# ─────────────────────────────────────────────
+# 12. Universe (Stage 1 full-market screen)
+# ─────────────────────────────────────────────
+universe:
+  # Decision §7: FMP available-traded list as primary universe source
+  # yfinance does not expose a clean universe endpoint
+  source: fmp                  # fmp | static_file
+  exchanges: [NYSE, NASDAQ, AMEX]
+  liquidity_floor:
+    min_price:          5.00
+    min_avg_volume_30d: 500_000
+    min_market_cap:     100_000_000  # $100M — excludes micro/nano caps
+  refresh_ttl_seconds: 604800  # 7 days
+
+# ─────────────────────────────────────────────
+# 13. Backtesting
+# ─────────────────────────────────────────────
+backtest:
+  # Decision §6: PIT fundamentals via Sharadar/Nasdaq Data Link
+  # Free-tier yfinance data is NOT point-in-time; backtest refuses to run silently on it
+  default_reporting_lag_days: 45     # 10-Q assumed filed 45 days after quarter-end
+  contamination_check: strict        # strict | warn | off
+                                     # strict = abort; warn = label as INDICATIVE
+  rebalance_frequencies:
+    - monthly
+    - quarterly
+    - semi_annual
+  cost_model:
+    commission_per_trade: 0.00       # most modern brokers
+    slippage_bps: 5                  # 5 bps round-trip slippage
+
+# ─────────────────────────────────────────────
+# 14. Reporting
+# ─────────────────────────────────────────────
+reporting:
+  runs_dir: "runs"
+  decimal_places: 2
+  terminal_color: true
