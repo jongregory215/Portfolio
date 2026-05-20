@@ -28,32 +28,31 @@ pip install -r requirements.txt
 ```
 
 ### 3. Set environment variables
-```bash
-# Required for fundamental data
-export FMP_API_KEY=your_fmp_key
 
-# Required for risk-free rate (Sharpe, DCF discount rate)
+No API keys are required to run the engine. Both are optional:
+
+```bash
+# Optional — improves risk-free rate accuracy (DCF discount rate, Sharpe).
+# Falls back to 5% when absent. Free key at https://fred.stlouisfed.org/docs/api/api_key.html
 export FRED_API_KEY=your_fred_key
 
-# Optional — override config location
-export STOCKGRADER_CONFIG=/path/to/config.yaml
+# Optional — only needed for the backtesting module (Sharadar PIT data).
+export NASDAQ_DATA_LINK_API_KEY=your_nasdaq_key
 ```
 
 On Windows (PowerShell):
 ```powershell
-$env:FMP_API_KEY = "your_fmp_key"
 $env:FRED_API_KEY = "your_fred_key"
 ```
 
 ### 4. API tiers required
 | Provider | Tier | Cost | Used for |
 |----------|------|------|----------|
-| yfinance | Free | $0 | Price history, basic info |
-| Financial Modeling Prep | Free (250 req/day) or Starter ($14/mo) | [fmp](https://financialmodelingprep.com/developer/docs) | Fundamentals, estimates, universe list |
-| FRED | Free | $0 | Risk-free rates |
+| yfinance | Free | $0 | **Everything** — price history, financials, ratios, estimates |
+| FRED | Free | $0 | Risk-free rates (optional; 5% fallback when absent) |
 | Sharadar (Nasdaq Data Link) | Core US Equities (~$50/mo) | Optional | **Backtesting only** — point-in-time fundamentals |
 
-The free FMP tier is sufficient for single-ticker analysis. The weekly full-universe portfolio rebuild requires FMP Starter or higher.
+All live analysis (`analyze.py`, `daily_run.py`, `weekly_run.py`) runs entirely on yfinance — no paid subscription needed.
 
 ---
 
@@ -63,11 +62,10 @@ The free FMP tier is sufficient for single-ticker analysis. The weekly full-univ
 # Install dependencies
 pip install -r requirements.txt
 
-# Set API keys (required for full fundamental data)
-export FMP_API_KEY=your_key    # or $env:FMP_API_KEY = "..." on Windows
-export FRED_API_KEY=your_key
+# Optional: set FRED_API_KEY for live risk-free rates (falls back to 5%)
+export FRED_API_KEY=your_key    # or $env:FRED_API_KEY = "..." on Windows
 
-# Analyze a ticker (color-coded terminal output + save JSON + MD)
+# Analyze a ticker — no API key required
 python analyze.py AAPL --save
 
 # JSON output to stdout

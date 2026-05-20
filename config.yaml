@@ -9,9 +9,9 @@
 data:
   providers:
     price:        yfinance     # free, no API key
-    fundamentals: fmp          # requires FMP_API_KEY env var
-    estimates:    fmp
-    macro:        fred         # requires FRED_API_KEY env var
+    fundamentals: yfinance     # free, no API key
+    estimates:    yfinance     # free, no API key
+    macro:        fred         # free, requires FRED_API_KEY env var
 
   cache:
     directory: "~/.stockgrader/cache"

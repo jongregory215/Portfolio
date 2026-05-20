@@ -109,6 +109,8 @@ _YF_MAP = {          # yfinance .info
     "beta":                         "beta",
     "marketCap":                    "market_cap",
     "enterpriseValue":              "enterprise_value",
+    "enterpriseToEbitda":           "ev_ebitda",
+    "enterpriseToRevenue":          "ev_revenue",
     "currentRatio":                 "current_ratio",
     "quickRatio":                   "quick_ratio",
     "debtToEquity":                 "debt_equity",
@@ -121,13 +123,22 @@ _YF_MAP = {          # yfinance .info
     "payoutRatio":                  "payout_ratio",
     "revenueGrowth":                "forward_revenue_growth",
     "earningsGrowth":               "forward_eps_growth",
+    "earningsQuarterlyGrowth":      "earnings_quarterly_growth",
     "pegRatio":                     "peg",
+    "totalDebt":                    "total_debt_spot",   # spot check vs BS series
+    "totalCash":                    "cash_spot",
+    "totalRevenue":                 "revenue_spot",
+    "operatingCashflow":            "operating_cf_spot",
+    "freeCashflow":                 "free_cf_spot",
+    "averageVolume":                "avg_volume",
+    "sharesOutstanding":            "shares_outstanding",
     "sector":                       "sector",
     "industry":                     "industry",
     "exchange":                     "exchange",
     "currency":                     "currency",
     "country":                      "country",
     "shortName":                    "company_name",
+    "longName":                     "company_name",      # fallback if shortName absent
 }
 
 

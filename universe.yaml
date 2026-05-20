@@ -1,0 +1,173 @@
+# Investable universe for the weekly portfolio rebuild.
+#
+# weekly_run.py screens every ticker here through the 4-stage funnel and
+# constructs the five risk-tiered model portfolios from the survivors.
+#
+# Edit freely — add tickers, remove ones you don't want, or reorganize.
+# The weekly funnel handles any list size; larger lists take longer to run.
+#
+# Default: ~150 large- and mid-cap names across all 11 GICS sectors.
+# Source: S&P 500 constituents as of 2025-05 (representative subset).
+# Run weekly_run.py to automatically fetch the full S&P 500 from Wikipedia
+# if this file is deleted or if you prefer a live list.
+
+universe:
+  # ── Technology ────────────────────────────────────────────────
+  - AAPL    # Apple
+  - MSFT    # Microsoft
+  - NVDA    # NVIDIA
+  - GOOGL   # Alphabet A
+  - GOOG    # Alphabet C
+  - META    # Meta Platforms
+  - AVGO    # Broadcom
+  - ORCL    # Oracle
+  - CRM     # Salesforce
+  - AMD     # Advanced Micro Devices
+  - INTC    # Intel
+  - QCOM    # Qualcomm
+  - TXN     # Texas Instruments
+  - NOW     # ServiceNow
+  - ADBE    # Adobe
+  - INTU    # Intuit
+  - AMAT    # Applied Materials
+  - MU      # Micron
+  - LRCX    # Lam Research
+  - KLAC    # KLA Corp
+  - CDNS    # Cadence Design
+  - SNPS    # Synopsys
+  - PANW    # Palo Alto Networks
+  - FTNT    # Fortinet
+  - CRWD    # CrowdStrike
+
+  # ── Communication Services ────────────────────────────────────
+  - NFLX    # Netflix
+  - DIS     # Disney
+  - CMCSA   # Comcast
+  - T       # AT&T
+  - VZ      # Verizon
+  - TMUS    # T-Mobile
+
+  # ── Financials ────────────────────────────────────────────────
+  - BRK-B   # Berkshire Hathaway B
+  - JPM     # JPMorgan Chase
+  - V       # Visa
+  - MA      # Mastercard
+  - BAC     # Bank of America
+  - GS      # Goldman Sachs
+  - MS      # Morgan Stanley
+  - WFC     # Wells Fargo
+  - AXP     # American Express
+  - BLK     # BlackRock
+  - SCHW    # Charles Schwab
+  - CB      # Chubb
+  - PGR     # Progressive
+  - MMC     # Marsh & McLennan
+  - AON     # Aon
+
+  # ── Healthcare ────────────────────────────────────────────────
+  - LLY     # Eli Lilly
+  - UNH     # UnitedHealth
+  - JNJ     # Johnson & Johnson
+  - ABBV    # AbbVie
+  - MRK     # Merck
+  - TMO     # Thermo Fisher
+  - ABT     # Abbott
+  - DHR     # Danaher
+  - AMGN    # Amgen
+  - PFE     # Pfizer
+  - BMY     # Bristol-Myers Squibb
+  - GILD    # Gilead Sciences
+  - ISRG    # Intuitive Surgical
+  - SYK     # Stryker
+  - BSX     # Boston Scientific
+  - ELV     # Elevance Health
+  - CI      # Cigna
+  - CVS     # CVS Health
+  - MCK     # McKesson
+
+  # ── Consumer Discretionary ────────────────────────────────────
+  - AMZN    # Amazon
+  - TSLA    # Tesla
+  - HD      # Home Depot
+  - MCD     # McDonald's
+  - NKE     # Nike
+  - SBUX    # Starbucks
+  - TGT     # Target
+  - LOW     # Lowe's
+  - BKNG    # Booking Holdings
+  - TJX     # TJX Companies
+  - ORLY    # O'Reilly Automotive
+  - AZO     # AutoZone
+  - ABNB    # Airbnb
+  - GM      # General Motors
+  - F       # Ford
+
+  # ── Consumer Staples ──────────────────────────────────────────
+  - COST    # Costco
+  - WMT     # Walmart
+  - PG      # Procter & Gamble
+  - KO      # Coca-Cola
+  - PEP     # PepsiCo
+  - PM      # Philip Morris
+  - MO      # Altria
+  - MDLZ    # Mondelez
+  - CL      # Colgate-Palmolive
+  - GIS     # General Mills
+
+  # ── Industrials ───────────────────────────────────────────────
+  - CAT     # Caterpillar
+  - RTX     # RTX Corp
+  - HON     # Honeywell
+  - GE      # GE Aerospace
+  - UPS     # United Parcel Service
+  - FDX     # FedEx
+  - BA      # Boeing
+  - LMT     # Lockheed Martin
+  - NOC     # Northrop Grumman
+  - DE      # Deere
+  - ETN     # Eaton
+  - EMR     # Emerson Electric
+  - MMM     # 3M
+  - CSX     # CSX Corp
+  - UNP     # Union Pacific
+
+  # ── Energy ────────────────────────────────────────────────────
+  - XOM     # ExxonMobil
+  - CVX     # Chevron
+  - COP     # ConocoPhillips
+  - EOG     # EOG Resources
+  - SLB     # SLB (Schlumberger)
+  - PXD     # Pioneer Natural Resources
+  - MPC     # Marathon Petroleum
+  - VLO     # Valero Energy
+  - PSX     # Phillips 66
+
+  # ── Utilities ─────────────────────────────────────────────────
+  - NEE     # NextEra Energy
+  - SO      # Southern Company
+  - DUK     # Duke Energy
+  - AEP     # American Electric Power
+  - EXC     # Exelon
+  - XEL     # Xcel Energy
+  - PCG     # PG&E
+  - ED      # Consolidated Edison
+  - AWK     # American Water Works
+
+  # ── Real Estate ───────────────────────────────────────────────
+  - AMT     # American Tower
+  - PLD     # Prologis
+  - EQIX   # Equinix
+  - CCI     # Crown Castle
+  - SPG     # Simon Property Group
+  - O       # Realty Income
+  - WELL    # Welltower
+  - AVB     # AvalonBay
+
+  # ── Materials ─────────────────────────────────────────────────
+  - LIN     # Linde
+  - APD     # Air Products
+  - SHW     # Sherwin-Williams
+  - FCX     # Freeport-McMoRan
+  - NEM     # Newmont
+  - ECL     # Ecolab
+  - DD      # DuPont

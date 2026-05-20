@@ -153,6 +153,70 @@ class YFinanceProvider(DataProvider):
     def get_sector_peers(self, ticker: str, method: str = "gics_sub_industry") -> list[str]:
         return []   # yfinance does not provide peer lists
 
+    # ── Universe ────────────────────────────────────────────────
+
+    def get_universe(self, universe_file: str = "universe.yaml") -> list[str]:
+        """
+        Return the investable universe as a list of ticker strings.
+
+        Resolution order:
+          1. universe.yaml in the project root (user-editable)
+          2. S&P 500 constituents fetched live from Wikipedia (free)
+          3. Hardcoded fallback of 50 large-caps
+
+        The Wikipedia fetch requires pandas (already a dependency) and an
+        internet connection but no API key.
+        """
+        import os
+        from pathlib import Path
+
+        # 1. Local file
+        path = Path(universe_file)
+        if not path.is_absolute():
+            # Resolve relative to project root (two levels above this file)
+            path = Path(__file__).parent.parent.parent / universe_file
+        if path.exists():
+            import yaml
+            try:
+                with open(path, encoding="utf-8") as f:
+                    data = yaml.safe_load(f)
+                tickers = data.get("universe", [])
+                if tickers:
+                    logger.info("Universe loaded from %s: %d tickers", path, len(tickers))
+                    return [str(t).upper().strip() for t in tickers]
+            except Exception as exc:
+                logger.warning("Failed to read %s: %s", path, exc)
+
+        # 2. Wikipedia S&P 500 (free, no API key)
+        try:
+            import pandas as pd
+            url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+            tables = pd.read_html(url, attrs={"id": "constituents"})
+            tickers = tables[0]["Symbol"].str.replace(".", "-", regex=False).tolist()
+            logger.info("Universe loaded from Wikipedia S&P 500: %d tickers", len(tickers))
+            return tickers
+        except Exception as exc:
+            logger.warning("Wikipedia S&P 500 fetch failed: %s — using fallback.", exc)
+
+        # 3. Hardcoded fallback
+        return _FALLBACK_UNIVERSE
+
+
+# ── Hardcoded fallback universe (50 large-caps across sectors) ─
+_FALLBACK_UNIVERSE = [
+    # Technology
+    "AAPL", "MSFT", "NVDA", "GOOGL", "META", "AVGO", "ORCL", "CRM", "AMD", "INTC",
+    "QCOM", "TXN", "NOW", "ADBE", "INTU",
+    # Financials
+    "BRK-B", "JPM", "V", "MA", "BAC", "GS", "MS", "WFC", "AXP", "BLK",
+    # Healthcare
+    "LLY", "UNH", "JNJ", "ABBV", "MRK", "TMO", "ABT", "DHR", "AMGN", "PFE",
+    # Consumer
+    "AMZN", "TSLA", "HD", "MCD", "NKE", "SBUX", "TGT", "COST", "WMT", "PG",
+    # Industrials / Energy / Utilities
+    "CAT", "RTX", "HON", "GE", "XOM", "CVX", "NEE", "SO", "DUK", "VZ",
+]
+
 
 # ── Serialization helpers ──────────────────────────────────────
 

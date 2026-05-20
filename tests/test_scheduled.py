@@ -379,10 +379,9 @@ class TestHoldingsMd:
             holdings.append(h)
         r = MagicMock()
         r.holdings = holdings
-        r.analytics.expected_return = 0.08
-        r.analytics.volatility = 0.15
-        r.analytics.sharpe = 0.52
-        r.analytics.n_holdings = len(tickers)
+        r.analytics.projected_return     = 0.08
+        r.analytics.projected_volatility = 0.15
+        r.analytics.weighted_beta        = 1.05
         return r
 
     def test_tickers_in_table(self):
@@ -402,14 +401,14 @@ class TestHoldingsMd:
 class TestMandateMd:
     def test_pass_reported(self):
         r = MagicMock()
-        r.mandate_check.passed = True
-        r.mandate_check.violations = []
+        r.mandate.passed = True
+        r.mandate.violations = []
         assert "PASS" in _mandate_md("balanced", r)
 
     def test_fail_with_violation(self):
         r = MagicMock()
-        r.mandate_check.passed = False
-        r.mandate_check.violations = ["Sector cap exceeded"]
+        r.mandate.passed = False
+        r.mandate.violations = ["Sector cap exceeded"]
         md = _mandate_md("balanced", r)
         assert "FAIL" in md and "Sector cap exceeded" in md
 
@@ -420,13 +419,13 @@ class TestMandateMd:
 class TestFunnelMd:
     def test_contains_stage_headers(self):
         r = MagicMock()
-        r.funnel_stats = None
+        r.funnel = None
         r.holdings = []
-        md = _funnel_md("balanced", r, "2024-01-15")
+        md = _funnel_md("balanced", r, "2024-01-15", n_universe=150)
         assert "Funnel" in md
 
     def test_none_result(self):
-        md = _funnel_md("balanced", None, "2024-01-15")
+        md = _funnel_md("balanced", None, "2024-01-15", n_universe=150)
         assert "not available" in md.lower()
 
 
@@ -459,21 +458,23 @@ class TestCheckpointing:
 
         mock_result = MagicMock()
         mock_result.holdings = [mock_holding]
-        mock_result.analytics.expected_return = 0.08
-        mock_result.analytics.volatility = 0.15
-        mock_result.analytics.sharpe = 0.52
-        mock_result.analytics.n_holdings = 1
-        mock_result.mandate_check.passed = True
-        mock_result.mandate_check.violations = []
-        mock_result.funnel_stats = None
+        mock_result.analytics.projected_return     = 0.08
+        mock_result.analytics.projected_volatility = 0.15
+        mock_result.analytics.weighted_beta        = 1.05
+        mock_result.mandate.passed     = True
+        mock_result.mandate.violations = []
+        mock_result.funnel = None
 
         call_count = {"n": 0}
-        def counted_funnel(fund, config):
+        def counted_funnel(**kwargs):
             call_count["n"] += 1
             return mock_result
 
         with patch("stockgrader.portfolios.construction.run_full_funnel", side_effect=counted_funnel), \
-             patch("stockgrader.config.get_config", return_value={}):
+             patch("stockgrader.config.get_config", return_value={}), \
+             patch("weekly_run._build_universe_basics", return_value=[]), \
+             patch("stockgrader.data.yfinance_provider.YFinanceProvider.get_universe",
+                   return_value=["AAPL"]):
             result = runner.invoke(weekly_app, ["--funds", "balanced", "--resume"])
 
         # balanced was checkpointed → funnel should NOT be called
@@ -505,17 +506,23 @@ class TestWeeklyCLI:
 
         mock_result = MagicMock()
         mock_result.holdings = [mock_holding]
-        mock_result.analytics.expected_return = 0.08
-        mock_result.analytics.volatility = 0.15
-        mock_result.analytics.sharpe = 0.52
-        mock_result.analytics.n_holdings = 1
-        mock_result.mandate_check.passed = True
-        mock_result.mandate_check.violations = []
-        mock_result.funnel_stats = None
+        mock_result.analytics.projected_return     = 0.08
+        mock_result.analytics.projected_volatility = 0.15
+        mock_result.analytics.weighted_beta        = 1.05
+        mock_result.mandate.passed     = True
+        mock_result.mandate.violations = []
+        mock_result.funnel = None
+
+        mock_fetcher = MagicMock()
+        mock_fetcher._yf.get_universe.return_value = ["AAPL"]
 
         with patch("stockgrader.portfolios.construction.run_full_funnel",
                    return_value=mock_result), \
-             patch("stockgrader.config.get_config", return_value={}):
+             patch("stockgrader.config.get_config", return_value={"portfolios": {}, "universe": {}}), \
+             patch("weekly_run._build_universe_basics", return_value=[{"ticker": "AAPL", "price": 150.0,
+                   "avg_volume": 1e7, "market_cap": 2e12, "beta": 1.1,
+                   "dividend_yield": 0.005, "debt_equity": 50.0, "sector": "Technology"}]), \
+             patch("stockgrader.data.fetcher.DataFetcher", return_value=mock_fetcher):
             result = runner.invoke(weekly_app, ["--funds", "balanced"])
 
         assert result.exit_code == 0
@@ -533,7 +540,10 @@ class TestWeeklyCLI:
 
         with patch("stockgrader.portfolios.construction.run_full_funnel",
                    side_effect=RuntimeError("API down")), \
-             patch("stockgrader.config.get_config", return_value={}):
+             patch("stockgrader.config.get_config", return_value={}), \
+             patch("weekly_run._build_universe_basics", return_value=[]), \
+             patch("stockgrader.data.yfinance_provider.YFinanceProvider.get_universe",
+                   return_value=["AAPL"]):
             result = runner.invoke(weekly_app, ["--funds", "balanced"])
 
         assert result.exit_code == 1
@@ -545,12 +555,15 @@ class TestWeeklyCLI:
         mock_result = MagicMock()
         mock_result.holdings = []
         mock_result.analytics = None
-        mock_result.mandate_check = None
-        mock_result.funnel_stats = None
+        mock_result.mandate  = None
+        mock_result.funnel   = None
 
         with patch("stockgrader.portfolios.construction.run_full_funnel",
                    return_value=mock_result), \
-             patch("stockgrader.config.get_config", return_value={}):
+             patch("stockgrader.config.get_config", return_value={}), \
+             patch("weekly_run._build_universe_basics", return_value=[]), \
+             patch("stockgrader.data.yfinance_provider.YFinanceProvider.get_universe",
+                   return_value=["AAPL"]):
             result = runner.invoke(weekly_app, ["--funds", "balanced", "--no-save"])
 
         # No files should be written
