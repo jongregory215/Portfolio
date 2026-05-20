@@ -53,6 +53,12 @@ from typing import Optional
 import typer
 import yaml
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent / ".env", override=False)
+except ImportError:
+    pass
+
 app = typer.Typer(
     name="daily_run",
     help="Morning watchlist alert runner.",

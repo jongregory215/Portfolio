@@ -51,6 +51,12 @@ from typing import Any
 
 import typer
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent / ".env", override=False)
+except ImportError:
+    pass
+
 app = typer.Typer(
     name="weekly_run",
     help="Weekly full-universe portfolio rebuild (yfinance, no API key required).",

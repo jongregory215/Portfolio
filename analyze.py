@@ -28,6 +28,15 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+# Load .env from project root automatically (if it exists).
+# This lets you store FMP_API_KEY / FRED_API_KEY in .env without
+# setting them in every shell session.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent / ".env", override=False)
+except ImportError:
+    pass
+
 app = typer.Typer(
     name="stockgrader",
     help="Stock Analysis Engine — grade an equity ticker on demand.",

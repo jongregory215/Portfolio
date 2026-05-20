@@ -58,7 +58,8 @@ _CF_MAP = {          # cash flow
     "netIncome":                    "net_income_cf",   # for quality-of-earnings
 }
 
-_KM_MAP = {          # key-metrics-ttm (suffix "TTM" stripped)
+_KM_MAP = {          # key-metrics-ttm — handles both v3 and stable API field names
+    # v3 names
     "revenuePerShareTTM":           "revenue_per_share",
     "currentRatioTTM":              "current_ratio",
     "debtToEquityTTM":              "debt_equity",
@@ -74,16 +75,21 @@ _KM_MAP = {          # key-metrics-ttm (suffix "TTM" stripped)
     "freeCashFlowYieldTTM":         "fcf_yield",
     "returnOnEquityTTM":            "roe",
     "returnOnAssetsTTM":            "roa",
-    "roicTTM":                      "roic_fmp",        # FMP's ROIC (we compute ours too)
+    "roicTTM":                      "roic_fmp",
     "investedCapitalTTM":           "invested_capital",
     "netDebtTTM":                   "net_debt",
     "marketCapTTM":                 "market_cap_km",
     "enterpriseValueTTM":           "enterprise_value",
     "grahamNumberTTM":              "graham_number",
     "pegRatioTTM":                  "peg",
+    # stable API names (different from v3)
+    "evToEBITDATTM":                "ev_ebitda",
+    "returnOnInvestedCapitalTTM":   "roic_fmp",
+    "marketCap":                    "market_cap_km",  # stable km-ttm uses marketCap not marketCapTTM
 }
 
-_RATIOS_MAP = {      # ratios-ttm
+_RATIOS_MAP = {      # ratios-ttm — handles both v3 and stable API field names
+    # v3 names
     "grossProfitMarginTTM":         "gross_margin",
     "operatingProfitMarginTTM":     "operating_margin",
     "netProfitMarginTTM":           "net_margin",
@@ -92,11 +98,20 @@ _RATIOS_MAP = {      # ratios-ttm
     "debtRatioTTM":                 "debt_to_assets",
     "quickRatioTTM":                "quick_ratio",
     "currentRatioTTM":              "current_ratio",
-    "dividendYielTTM":              "dividend_yield",
+    "dividendYielTTM":              "dividend_yield",   # v3 has a typo (no 'd')
     "payoutRatioTTM":               "payout_ratio",
     "priceEarningsRatioTTM":        "pe_trailing",
     "priceToBookRatioTTM":          "pb",
     "priceToSalesRatioTTM":         "ps",
+    # stable API names (different from v3)
+    "dividendYieldTTM":             "dividend_yield",   # stable fixes the typo
+    "dividendPayoutRatioTTM":       "payout_ratio",
+    "priceToEarningsRatioTTM":      "pe_trailing",
+    "debtToAssetsRatioTTM":         "debt_to_assets",
+    "debtToEquityRatioTTM":         "debt_equity",
+    "interestCoverageRatioTTM":     "interest_coverage",
+    "revenuePerShareTTM":           "revenue_per_share",
+    "enterpriseValueMultipleTTM":   "ev_ebitda",
 }
 
 _YF_MAP = {          # yfinance .info
