@@ -60,15 +60,22 @@ class BaseEngine(ABC):
         return (1.0 - raw) * 100.0 if invert else raw * 100.0
 
     @staticmethod
-    def percentile_score(value: float, peer_values: list[float]) -> float:
+    def percentile_score(
+        value: float,
+        peer_values: list[float],
+        inverted: bool = False,
+    ) -> float:
         """
-        Score as the percentile rank of value within peer_values.
-        Returns 0–100.
+        Score as the percentile rank of value within peer_values (0–100).
+
+        inverted=True  → lower value = higher score (use for P/E, P/B, etc.)
+        inverted=False → higher value = higher score (use for margins, ROE, etc.)
         """
         if not peer_values:
             return 50.0
         below = sum(1 for v in peer_values if v < value)
-        return (below / len(peer_values)) * 100.0
+        pct   = (below / len(peer_values)) * 100.0
+        return (100.0 - pct) if inverted else pct
 
     @staticmethod
     def weighted_average(scores: dict[str, float], weights: dict[str, float]) -> float:
