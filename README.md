@@ -57,26 +57,80 @@ The free FMP tier is sufficient for single-ticker analysis. The weekly full-univ
 
 ---
 
-## Example commands
+## Quick Start
 
 ```bash
-# Analyze a ticker (terminal output)
-python analyze.py AAPL
+# Install dependencies
+pip install -r requirements.txt
 
-# JSON output
+# Set API keys (required for full fundamental data)
+export FMP_API_KEY=your_key    # or $env:FMP_API_KEY = "..." on Windows
+export FRED_API_KEY=your_key
+
+# Analyze a ticker (color-coded terminal output + save JSON + MD)
+python analyze.py AAPL --save
+
+# JSON output to stdout
 python analyze.py MSFT --format json
 
-# Markdown report
+# Markdown report to stdout
 python analyze.py JPM --format md
 
-# Only show Conservative portfolio sub-grade
-python analyze.py JNJ --portfolio conservative
+# Grade through a specific portfolio lens
+python analyze.py TSLA --portfolio aggressive
 
-# Daily alert check (watchlist)
+# Bypass cache for fresh data
+python analyze.py NVDA --no-cache
+
+# All formats + save files to a custom directory
+python analyze.py AAPL --format all --save --runs-dir /path/to/reports
+
+# Daily alert check (watchlist in watchlist.yaml)
 python daily_run.py
 
 # Weekly portfolio rebuild (all five funds)
 python weekly_run.py
+
+# Dry-run (no live data, no file writes)
+python daily_run.py --dry-run
+```
+
+## Worked example
+
+With API keys set, `python analyze.py AAPL` produces output like:
+
+```
+╭──────────────────── AAPL Analysis ─────────────────────╮
+│ AAPL  ✅ BUY ★★★★  67.2/100  confidence 81%           │
+│                                                          │
+│ ⭐ Gotta Have ≤ $128          |                         │
+│ ✅ Buy       ≤ $155           |                         │
+│ ⚖️ Hold       $155 – $210     | ◀ current ($182.74)    │
+│ ⚠️ Sell      > $210           |                         │
+│ 🚫 Stay Away > $256           |                         │
+│ Fair Value  $183.00  upside +0.1%                       │
+│                                                          │
+│ F=70  T=60  Q=58                                        │
+│                                                          │
+│  VC          CON      BAL      AGG      VA               │
+│  🚫 SA       ⚖️ HOLD  ✅ BUY  ✅ BUY  ✅ BUY            │
+│                                                          │
+│ Drivers:                                                 │
+│  + ROIC +9.0ppt above WACC (strong moat)                │
+│  + Profitability 78/100                                  │
+│  + Quality factor 72nd percentile                        │
+│  - Momentum 4th percentile (recent pullback)             │
+│  - Valuation 52/100 — P/E near peer median              │
+│  - Max drawdown -18.2% (3yr)                            │
+╰─────────────────── 2026-05-20 14:30 UTC ───────────────╯
+```
+
+The JSON output (`--format json`) matches the canonical schema in spec §13.1.
+The Markdown report (`--format md`) contains all nine sections: price ladder,
+sensitivity grid, engine breakdown, factor table, risk metrics, and portfolio
+sub-grade table.
+
+## Example commands
 
 # Dry run (no live data, no file writes)
 python daily_run.py --dry-run
@@ -238,15 +292,15 @@ All backtest runs write dated reports to `runs/backtest/`. OOS results are clear
 | Step | Description | Status |
 |------|-------------|--------|
 | 1 | Schema, config, skeleton | ✅ Complete |
-| 2 | Data layer (yfinance + FMP + cache) | ⬜ Pending |
-| 3 | Fundamental engine + tests | ⬜ Pending |
-| 4 | Technical engine + tests | ⬜ Pending |
-| 5 | Quantitative engine + tests | ⬜ Pending |
-| 6 | Composite + circuit breakers | ⬜ Pending |
-| 7 | Price ladder / fair value | ⬜ Pending |
-| 8 | Portfolio sub-grades | ⬜ Pending |
-| 9 | Portfolio construction funnel | ⬜ Pending |
-| 10 | Reporters (JSON / MD / terminal) | ⬜ Pending |
-| 11 | End-to-end CLI + worked example | ⬜ Pending |
+| 2 | Data layer (yfinance + FMP + cache) | ✅ Complete |
+| 3 | Fundamental engine + tests | ✅ Complete |
+| 4 | Technical engine + tests | ✅ Complete |
+| 5 | Quantitative engine + tests | ✅ Complete |
+| 6 | Composite + circuit breakers | ✅ Complete |
+| 7 | Price ladder / fair value | ✅ Complete |
+| 8 | Portfolio sub-grades | ✅ Complete |
+| 9 | Portfolio construction funnel | ✅ Complete |
+| 10 | Reporters (JSON / MD / terminal) | ✅ Complete |
+| 11 | End-to-end CLI + worked example | ✅ Complete |
 | 12 | Backtesting & validation | ⬜ Pending |
 | 13 | Scheduled scripts (daily / weekly) | ⬜ Pending |
