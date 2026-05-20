@@ -105,8 +105,8 @@ def _load_prior_grades(runs_dir: Path, today: str) -> dict[str, str]:
     return {}
 
 
-def _extract_ticker_record(result) -> dict[str, Any]:
-    """Pull the fields we need from an AnalysisResult for the dashboard."""
+def _extract_ticker_record(result, raw_data: dict) -> dict[str, Any]:
+    """Pull the fields we need from an AnalysisResult + raw data dict."""
     overall = result.overall
     ladder  = result.price_ladder
 
@@ -114,15 +114,31 @@ def _extract_ticker_record(result) -> dict[str, Any]:
     fair_value = getattr(ladder, "fair_value", None) if ladder else None
     upside     = ((fair_value / price - 1.0) if price and fair_value and price > 0 else None)
 
+    # Portfolio sub-grades (attribute is 'portfolios', not 'portfolio_grades')
     portfolio_grades     : dict[str, str]   = {}
     portfolio_composites : dict[str, float] = {}
-    if result.portfolio_grades:
-        pg = result.portfolio_grades
+    pg = getattr(result, "portfolios", None)
+    if pg:
         for fund in _ALL_FUNDS:
             sleeve = getattr(pg, fund, None)
             if sleeve:
                 portfolio_grades[fund]     = sleeve.grade.value
-                portfolio_composites[fund] = sleeve.composite
+                # Use overall composite as proxy for portfolio ranking score
+                # since sleeve.composite is 0 when gates fail
+                portfolio_composites[fund] = (
+                    sleeve.composite if sleeve.composite > 0
+                    else overall.composite if overall else 0.0
+                )
+
+    # Sector comes from the raw data dict, not the AnalysisResult
+    sector   = raw_data.get("sector")   or ""
+    industry = raw_data.get("industry") or ""
+
+    # Convenience refs
+    fund_eng  = result.engines.fundamental  if result.engines else None
+    tech_eng  = result.engines.technical    if result.engines else None
+    quant_eng = result.engines.quantitative if result.engines else None
+    risk      = quant_eng.risk_metrics      if quant_eng else None
 
     return {
         "grade":                overall.grade.value if overall else "Unknown",
@@ -131,32 +147,32 @@ def _extract_ticker_record(result) -> dict[str, Any]:
         "price":                round(price, 2) if price else None,
         "fair_value":           round(fair_value, 2) if fair_value else None,
         "upside_pct":           round(upside * 100, 1) if upside is not None else None,
-        "sector":               getattr(result, "sector", "") or "",
-        "industry":             getattr(result, "industry", "") or "",
-        "fund_score":           round(result.engines.fundamental.score, 1) if result.engines and result.engines.fundamental else None,
-        "tech_score":           round(result.engines.technical.score, 1)   if result.engines and result.engines.technical   else None,
-        "quant_score":          round(result.engines.quantitative.score, 1) if result.engines and result.engines.quantitative else None,
+        "sector":               sector,
+        "industry":             industry,
+        "fund_score":           round(fund_eng.score, 1)  if fund_eng  else None,
+        "tech_score":           round(tech_eng.score, 1)  if tech_eng  else None,
+        "quant_score":          round(quant_eng.score, 1) if quant_eng else None,
         "portfolio_grades":     portfolio_grades,
         "portfolio_composites": portfolio_composites,
         "drivers_positive":     list(overall.drivers_positive) if overall else [],
         "drivers_negative":     list(overall.drivers_negative) if overall else [],
         "circuit_breakers":     list(overall.circuit_breakers.keys()) if overall and overall.circuit_breakers else [],
         "price_ladder": {
-            "gotta_have_at": getattr(ladder, "gotta_have_at", None),
-            "buy_at":        getattr(ladder, "buy_at", None),
-            "hold_low":      getattr(ladder, "hold_range", [None, None])[0] if ladder and getattr(ladder, "hold_range", None) else None,
-            "hold_high":     getattr(ladder, "hold_range", [None, None])[1] if ladder and getattr(ladder, "hold_range", None) else None,
-            "sell_above":    getattr(ladder, "sell_above", None),
+            "gotta_have_at":   getattr(ladder, "gotta_have_at", None),
+            "buy_at":          getattr(ladder, "buy_at", None),
+            "hold_low":        (getattr(ladder, "hold_range", None) or [None, None])[0],
+            "hold_high":       (getattr(ladder, "hold_range", None) or [None, None])[1],
+            "sell_above":      getattr(ladder, "sell_above", None),
             "stay_away_above": getattr(ladder, "stay_away_above", None),
-            "fair_value":    fair_value,
+            "fair_value":      fair_value,
         } if ladder else {},
-        "altman_z":     getattr(result.engines.fundamental, "altman_z", None) if result.engines and result.engines.fundamental else None,
-        "piotroski_f":  getattr(result.engines.fundamental, "piotroski_f", None) if result.engines and result.engines.fundamental else None,
-        "roic_vs_wacc": getattr(result.engines.fundamental, "roic_vs_wacc", None) if result.engines and result.engines.fundamental else None,
-        "beta":         getattr(result.engines.quantitative.risk_metrics, "beta_1yr", None) if result.engines and result.engines.quantitative and result.engines.quantitative.risk_metrics else None,
-        "max_drawdown": getattr(result.engines.quantitative.risk_metrics, "max_drawdown_3yr", None) if result.engines and result.engines.quantitative and result.engines.quantitative.risk_metrics else None,
-        "sharpe":       getattr(result.engines.quantitative.risk_metrics, "sharpe_1yr", None) if result.engines and result.engines.quantitative and result.engines.quantitative.risk_metrics else None,
-        "regime":       getattr(result.engines.technical, "regime", None) if result.engines and result.engines.technical else None,
+        "altman_z":     getattr(fund_eng,  "altman_z",    None),
+        "piotroski_f":  getattr(fund_eng,  "piotroski_f", None),
+        "roic_vs_wacc": getattr(fund_eng,  "roic_vs_wacc",None),
+        "beta":         getattr(risk, "beta_1yr",        None),
+        "max_drawdown": getattr(risk, "max_drawdown_3yr", None),
+        "sharpe":       getattr(risk, "sharpe_1yr",      None),
+        "regime":       getattr(tech_eng, "regime",      None),
     }
 
 
@@ -278,8 +294,9 @@ def main(
             continue
 
         try:
-            result = run_analysis(ticker, config=config, fetcher=fetcher)
-            ticker_results[ticker] = _extract_ticker_record(result)
+            raw_data = fetcher.fetch(ticker)          # cached after first call
+            result   = run_analysis(ticker, config=config, fetcher=fetcher)
+            ticker_results[ticker] = _extract_ticker_record(result, raw_data)
         except Exception as exc:
             logger.warning("Failed %s: %s", ticker, exc)
             skipped.append(ticker)
