@@ -64,24 +64,44 @@ def analyze(
         False, "--no-cache",
         help="Bypass disk cache and fetch live data",
     ),
+    deep: bool = typer.Option(
+        False, "--deep",
+        help="Use FMP for richer fundamentals + peer-relative scoring "
+             "(requires FMP_API_KEY env var; free tier: 250 calls/day)",
+    ),
 ):
     """
     Analyze TICKER and emit an overall grade, price ladder, and portfolio sub-grades.
+
+    Default:  yfinance only — no API key required.
+    --deep:   adds FMP fundamentals, TTM ratios, and GICS peer percentile scoring.
+              Set FMP_API_KEY in your environment or .env file first.
 
     Exit codes:
       0  Normal (any grade)
       1  Fatal error (bad ticker, no data, etc.)
       2  Stay Away grade (useful for scripts / alerting)
     """
+    import os
     from stockgrader.pipeline import run_analysis
+    from stockgrader.data.fetcher import DataFetcher
 
     ticker = ticker.upper().strip()
     fmt    = format.lower()
 
-    _err.print(f"[dim]Analyzing {ticker}…[/dim]")
+    if deep and not os.environ.get("FMP_API_KEY"):
+        _err.print("[yellow]Warning:[/yellow] --deep requested but FMP_API_KEY is not set. "
+                   "Running in standard yfinance mode.")
+        deep = False
+
+    mode_label = "deep/FMP" if deep else "standard"
+    _err.print(f"[dim]Analyzing {ticker} ({mode_label})…[/dim]")
+
+    fetcher = DataFetcher(deep=deep)
 
     try:
-        result = run_analysis(ticker, portfolio=portfolio, no_cache=no_cache)
+        result = run_analysis(ticker, portfolio=portfolio, no_cache=no_cache,
+                              fetcher=fetcher)
     except SystemExit:
         raise
     except Exception as exc:

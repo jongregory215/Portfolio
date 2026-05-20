@@ -29,7 +29,15 @@ except ImportError:
 def _get_console() -> Any:
     if not _RICH:
         raise ImportError("rich is required for terminal output: pip install rich")
-    return Console()
+    import sys, io
+    # On Windows, stdout may be cp1252. Wrap the binary buffer with UTF-8 so
+    # Rich can render emoji/box-drawing characters without UnicodeEncodeError.
+    try:
+        utf8_out = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8",
+                                    errors="replace", line_buffering=True)
+    except AttributeError:
+        utf8_out = sys.stdout   # already a text stream (e.g. redirected)
+    return Console(file=utf8_out, highlight=False, legacy_windows=False)
 
 
 class TerminalReporter:

@@ -99,6 +99,7 @@ def _save_checkpoint(out_dir: Path, completed: dict[str, bool]) -> None:
 def _build_universe_basics(
     tickers: list[str],
     yf_provider,
+    delay_secs: float = 0.3,
 ) -> list[dict[str, Any]]:
     """
     Fetch minimal per-ticker info from yfinance .info for Stage 1 screening.
@@ -106,9 +107,13 @@ def _build_universe_basics(
     Returns a list of dicts with the fields run_full_funnel expects:
     ticker, price, avg_volume, market_cap, beta, dividend_yield,
     debt_equity, sector.
+
+    delay_secs: pause between requests on a cold run to avoid yfinance
+                throttling. Cached tickers skip the delay entirely.
     """
+    import time
     basics: list[dict[str, Any]] = []
-    for ticker in tickers:
+    for i, ticker in enumerate(tickers):
         try:
             info = yf_provider.get_fundamentals(ticker)
             price = (info.get("currentPrice")
@@ -124,6 +129,9 @@ def _build_universe_basics(
                 "debt_equity":    info.get("debtToEquity"),
                 "sector":         info.get("sector", ""),
             })
+            # Small delay every 10 tickers to be polite to yfinance
+            if delay_secs > 0 and (i + 1) % 10 == 0:
+                time.sleep(delay_secs)
         except Exception as exc:
             logger.warning("Skipping %s — yfinance .info failed: %s", ticker, exc)
     return basics
