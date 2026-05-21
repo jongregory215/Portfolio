@@ -62,19 +62,32 @@ _GRADE_EMOJI = {
 # Data loading
 # ──────────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)   # refresh every 60s while a run is in progress
 def load_latest_data() -> dict[str, Any] | None:
     dated_dirs = sorted(
         (d for d in _RUNS_DIR.glob("????-??-??") if d.is_dir()),
         reverse=True,
     )
     for ddir in dated_dirs:
-        p = ddir / "universe_grades.json"
-        if p.exists():
-            try:
-                return json.loads(p.read_text(encoding="utf-8"))
-            except Exception:
-                pass
+        # Prefer completed JSON; fall back to in-progress checkpoint
+        for fname in ("universe_grades.json", ".grade_checkpoint.json"):
+            p = ddir / fname
+            if p.exists():
+                try:
+                    raw = json.loads(p.read_text(encoding="utf-8"))
+                    # Checkpoint is a flat ticker dict; wrap it to match full format
+                    if fname == ".grade_checkpoint.json":
+                        return {
+                            "run_date":      ddir.name,
+                            "source":        "in-progress",
+                            "n_tickers":     len(raw),
+                            "grade_changes": {},
+                            "tickers":       raw,
+                            "portfolios":    {},
+                        }
+                    return raw
+                except Exception:
+                    pass
     return None
 
 
@@ -527,8 +540,13 @@ def main() -> None:
     grade_changes = data.get("grade_changes", {})
     tickers_data  = data.get("tickers", {})
 
-    st.caption(f"Last run: **{run_date}**  |  {n_tickers} tickers analysed  |  "
-               f"{len(grade_changes)} grade changes vs prior week")
+    is_live = data.get("source") == "in-progress"
+    if is_live:
+        st.info(f"**Run in progress** — {n_tickers} tickers graded so far. "
+                f"Dashboard refreshes every 60 seconds automatically.")
+    st.caption(f"Last run: **{run_date}**  |  {n_tickers} tickers  |  "
+               f"{len(grade_changes)} grade changes"
+               + ("  |  ⏳ grading in progress…" if is_live else ""))
 
     full_df = build_df(tickers_data)
     if full_df.empty:

@@ -352,6 +352,8 @@ def build_price_ladder(
 
     # ── 1. DCF fair value ─────────────────────────────────────
     fv_dcf: float | None = None
+    data_completeness = _f(data.get("data_completeness")) or 1.0
+
     if inp["fcf_per_share"] and inp["fcf_per_share"] > 0:
         fv_dcf = _dcf_intrinsic_value(
             fcf_per_share   = inp["fcf_per_share"],
@@ -362,6 +364,19 @@ def build_price_ladder(
             stage2_years    = inp["stage2_years"],
         )
         if fv_dcf is not None and (math.isnan(fv_dcf) or math.isinf(fv_dcf)):
+            fv_dcf = None
+
+        # Sanity check: if DCF is more than 5× current price AND data
+        # completeness is below 85%, the inputs are likely distorted
+        # (post-restructuring, missing fields, etc.) — discard DCF and
+        # rely on multiples only.
+        if (fv_dcf is not None and price is not None and price > 0
+                and fv_dcf > price * 5.0 and data_completeness < 0.85):
+            logger.warning(
+                "DCF fair value (%.2f) is >5x price (%.2f) with data completeness "
+                "%.0f%% — discarding DCF, using multiples only.",
+                fv_dcf, price, data_completeness * 100,
+            )
             fv_dcf = None
     else:
         logger.info("No positive FCF per share — skipping DCF; using multiples only.")

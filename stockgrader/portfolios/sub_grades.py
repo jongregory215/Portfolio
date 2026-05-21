@@ -127,8 +127,17 @@ def _check_gates(
                                   limit=limit))
 
     # ── max_debt_equity ───────────────────────────────────────
+    # Financial-sector companies (banks, insurers, REITs) carry structural
+    # leverage that is not comparable to industrial debt — their high D/E
+    # ratios reflect their business model, not distress.  Skip this gate
+    # for those sectors so they are not systematically excluded.
+    _FINANCIAL_SECTORS = {"financial services", "financials", "insurance",
+                          "banks", "real estate"}
+    sector = str(data.get("sector") or "").lower()
+    is_financial = any(s in sector for s in _FINANCIAL_SECTORS)
+
     limit = _f(gates_cfg.get("max_debt_equity"))
-    if limit is not None:
+    if limit is not None and not is_financial:
         de     = _f(data.get("debt_equity"))
         val    = abs(de) if de is not None else None
         passed = (val is None) or (val <= limit)
