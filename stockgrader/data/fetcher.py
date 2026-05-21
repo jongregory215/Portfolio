@@ -236,11 +236,13 @@ _YF_BS_FIELDS: dict[str, str] = {
 }
 
 _YF_CF_FIELDS: dict[str, str] = {
-    "Operating Cash Flow": "operatingCashFlow",
-    "Capital Expenditure": "capitalExpenditure",
-    "Free Cash Flow":      "freeCashFlow",
-    "Cash Dividends Paid": "dividendsPaid",
-    "Net Income":          "netIncome",
+    "Operating Cash Flow":                  "operatingCashFlow",
+    "Capital Expenditure":                  "capitalExpenditure",
+    "Free Cash Flow":                       "freeCashFlow",
+    "Cash Dividends Paid":                  "dividendsPaid",
+    "Net Income":                           "netIncome",
+    # yfinance uses this field name for net income in the cash flow statement
+    "Net Income From Continuing Operations":"netIncome",
 }
 
 

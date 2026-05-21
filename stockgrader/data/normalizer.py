@@ -589,6 +589,30 @@ def normalize(
     if "interest_coverage" not in data and data.get("interest_coverage_c") is not None:
         data["interest_coverage"] = data["interest_coverage_c"]
 
+    # ── 10b. Compute debt_equity / roe from raw series when provider
+    #         returns None (common when stockholders' equity is negative).
+    #         Negative values are preserved — they are meaningful signals.
+    if "debt_equity" not in data or data["debt_equity"] is None:
+        td  = _safe(data.get("total_debt",   [None])[0] if isinstance(data.get("total_debt"),   list) else data.get("total_debt"))
+        eq  = _safe(data.get("total_equity", [None])[0] if isinstance(data.get("total_equity"), list) else data.get("total_equity"))
+        if td is not None and eq is not None and eq != 0:
+            data["debt_equity"] = td / eq
+            sources["debt_equity"] = "computed"
+
+    if "roe" not in data or data["roe"] is None:
+        ni = _safe(data.get("net_income", [None])[0] if isinstance(data.get("net_income"), list) else data.get("net_income"))
+        eq = _safe(data.get("total_equity", [None])[0] if isinstance(data.get("total_equity"), list) else data.get("total_equity"))
+        if ni is not None and eq is not None and eq != 0:
+            data["roe"] = ni / eq
+            sources["roe"] = "computed"
+
+    if "net_income_cf" not in data or data["net_income_cf"] is None:
+        # Fall back to net_income from income statement as a proxy
+        ni = _safe(data.get("net_income", [None])[0] if isinstance(data.get("net_income"), list) else data.get("net_income"))
+        if ni is not None:
+            data["net_income_cf"] = ni
+            sources["net_income_cf"] = "computed_from_is"
+
     # ── 11. Track required fields that are truly missing ────────
     required_fields = [
         "price", "market_cap", "revenue", "net_income", "total_assets",

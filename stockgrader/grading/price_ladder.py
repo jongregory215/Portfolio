@@ -366,10 +366,22 @@ def build_price_ladder(
         if fv_dcf is not None and (math.isnan(fv_dcf) or math.isinf(fv_dcf)):
             fv_dcf = None
 
-        # Sanity check: if DCF is more than 5× current price AND data
-        # completeness is below 85%, the inputs are likely distorted
-        # (post-restructuring, missing fields, etc.) — discard DCF and
-        # rely on multiples only.
+        # Sanity check 1: negative equity means the capital structure is
+        # distorted (post-restructuring, leveraged buyout, serial losses).
+        # DCF built on negative equity produces unreliable results.
+        equity = data.get("total_equity")
+        if isinstance(equity, list):
+            equity = equity[0] if equity else None
+        if equity is not None and _f(equity) is not None and _f(equity) < 0:
+            logger.warning(
+                "Negative stockholders' equity (%.0f) — DCF unreliable; "
+                "using multiples only for %s.",
+                equity, data.get("ticker", "?"),
+            )
+            fv_dcf = None
+
+        # Sanity check 2: if DCF is more than 5× current price AND data
+        # completeness is below 85%, inputs are likely distorted — discard.
         if (fv_dcf is not None and price is not None and price > 0
                 and fv_dcf > price * 5.0 and data_completeness < 0.85):
             logger.warning(
