@@ -61,7 +61,7 @@ universe:
   - SCHW    # Charles Schwab
   - CB      # Chubb
   - PGR     # Progressive
-  - MMC     # Marsh & McLennan
+  # - MMC   # Marsh & McLennan (delisted/ticker issue — removed)
   - AON     # Aon
 
   # ── Healthcare ────────────────────────────────────────────────
@@ -137,7 +137,7 @@ universe:
   - COP     # ConocoPhillips
   - EOG     # EOG Resources
   - SLB     # SLB (Schlumberger)
-  - PXD     # Pioneer Natural Resources
+  # - PXD   # Pioneer Natural Resources (acquired by Exxon — delisted)
   - MPC     # Marathon Petroleum
   - VLO     # Valero Energy
   - PSX     # Phillips 66
