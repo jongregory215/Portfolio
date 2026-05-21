@@ -84,11 +84,14 @@ def _load_yaml_universe(overrides: list[str] | None = None) -> list[str]:
 
 def _fetch_sp500() -> list[str]:
     """Fetch S&P 500 constituents from Wikipedia (free, ~503 tickers)."""
-    import pandas as pd
+    import requests, pandas as pd
     typer.echo("Fetching S&P 500 from Wikipedia …")
     try:
-        url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-        df  = pd.read_html(url, attrs={"id": "constituents"})[0]
+        url  = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+        html = requests.get(url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0"
+        }, timeout=20).text
+        df = pd.read_html(StringIO(html), attrs={"id": "constituents"})[0]
         tickers = df["Symbol"].str.replace(".", "-", regex=False).tolist()
         typer.echo(f"  S&P 500: {len(tickers)} tickers")
         return tickers
@@ -145,27 +148,45 @@ def _fetch_sp1500() -> list[str]:
     S&P 1500 = S&P 500 + S&P 400 (mid-cap) + S&P 600 (small-cap) from Wikipedia.
     Free, no API key, ~1 500 tickers covering large / mid / small cap.
     """
-    import pandas as pd
+    import requests, pandas as pd
     typer.echo("Fetching S&P 1500 from Wikipedia …")
-    tickers: list[str] = []
+
+    _HEADERS = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0 Safari/537.36"
+        )
+    }
     pages = [
-        ("S&P 500",  "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",  "constituents", "Symbol"),
-        ("S&P 400",  "https://en.wikipedia.org/wiki/List_of_S%26P_400_companies",  None,           "Ticker"),
-        ("S&P 600",  "https://en.wikipedia.org/wiki/List_of_S%26P_600_companies",  None,           "Ticker"),
+        ("S&P 500", "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+         "constituents", "Symbol"),
+        ("S&P 400", "https://en.wikipedia.org/wiki/List_of_S%26P_400_companies",
+         None, "Ticker"),
+        ("S&P 600", "https://en.wikipedia.org/wiki/List_of_S%26P_600_companies",
+         None, "Ticker"),
     ]
+    tickers: list[str] = []
     for name, url, table_id, col in pages:
         try:
+            html = requests.get(url, headers=_HEADERS, timeout=20).text
             kwargs = {"attrs": {"id": table_id}} if table_id else {}
-            tables = pd.read_html(url, **kwargs)
+            tables = pd.read_html(StringIO(html), **kwargs)
             for df in tables:
-                if col in df.columns:
-                    t = df[col].str.replace(".", "-", regex=False).dropna().tolist()
+                # column name varies slightly across Wikipedia pages
+                match = next((c for c in df.columns
+                              if str(c).strip().lower() in ("symbol", "ticker")), None)
+                if match:
+                    t = df[match].astype(str).str.replace(".", "-", regex=False).dropna().tolist()
                     tickers.extend(t)
                     typer.echo(f"  {name}: {len(t)} tickers")
                     break
+            else:
+                typer.echo(f"  {name}: no matching column found")
         except Exception as exc:
             typer.echo(f"  {name} failed: {exc}")
-    return list(dict.fromkeys(t.upper() for t in tickers))  # dedup, preserve order
+
+    return list(dict.fromkeys(t.upper() for t in tickers if t and t != "NAN"))
 
 
 # ──────────────────────────────────────────────────────────────
@@ -173,16 +194,18 @@ def _fetch_sp1500() -> list[str]:
 # ──────────────────────────────────────────────────────────────
 
 def _screen_one(ticker: str, yf_provider, min_market_cap: float,
-                min_avg_volume: float) -> tuple[str, dict | None]:
+                min_avg_volume: float, delay: float = 0.0) -> tuple[str, dict | None]:
     """Return (ticker, basic_info) if it passes Stage 1, else (ticker, None)."""
+    if delay > 0:
+        time.sleep(delay)
     try:
         info = yf_provider.get_fundamentals(ticker)
         mc  = info.get("marketCap")  or 0
         vol = info.get("averageVolume") or 0
         if mc >= min_market_cap and vol >= min_avg_volume:
             return ticker, {
-                "price":   info.get("currentPrice") or info.get("regularMarketPrice"),
-                "sector":  info.get("sector", ""),
+                "price":      info.get("currentPrice") or info.get("regularMarketPrice"),
+                "sector":     info.get("sector", ""),
                 "market_cap": mc,
             }
     except Exception:
@@ -191,17 +214,18 @@ def _screen_one(ticker: str, yf_provider, min_market_cap: float,
 
 
 def _quick_screen_parallel(
-    tickers:       list[str],
+    tickers:        list[str],
     yf_provider,
-    workers:       int,
+    workers:        int,
     min_market_cap: float,
     min_avg_volume: float,
+    delay:          float = 0.0,
 ) -> list[str]:
     """Parallel Stage 1 screen — returns tickers that pass liquidity floors."""
     survivors: list[str] = []
     done = 0
     lock = threading.Lock()
-    n = len(tickers)
+    n    = len(tickers)
 
     def _cb(future):
         nonlocal done
@@ -212,11 +236,11 @@ def _quick_screen_parallel(
                 survivors.append(ticker)
             if done % 200 == 0 or done == n:
                 typer.echo(f"  Stage 1: {done}/{n} screened, "
-                           f"{len(survivors)} survivors so far …", err=True)
+                           f"{len(survivors)} survivors …", err=True)
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
         futures = {
-            ex.submit(_screen_one, t, yf_provider, min_market_cap, min_avg_volume): t
+            ex.submit(_screen_one, t, yf_provider, min_market_cap, min_avg_volume, delay): t
             for t in tickers
         }
         for f in as_completed(futures):
@@ -233,8 +257,11 @@ def _grade_one(
     ticker:  str,
     config:  dict,
     fetcher,
+    delay:   float = 0.0,
 ) -> tuple[str, dict | None, str | None]:
     """Grade a single ticker. Returns (ticker, record, error_msg)."""
+    if delay > 0:
+        time.sleep(delay)
     try:
         raw_data = fetcher.fetch(ticker)
         from stockgrader.pipeline import run_analysis
@@ -251,6 +278,7 @@ def _grade_parallel(
     workers:      int,
     existing:     dict[str, Any],
     out_dir:      Path,
+    delay:        float = 0.0,
 ) -> dict[str, Any]:
     """Run full analysis in parallel, resuming from existing checkpoint."""
     results: dict[str, Any] = dict(existing)
@@ -289,7 +317,7 @@ def _grade_parallel(
                 _save_checkpoint(out_dir, results)
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        futures = {ex.submit(_grade_one, t, config, fetcher): t for t in pending}
+        futures = {ex.submit(_grade_one, t, config, fetcher, delay): t for t in pending}
         for f in as_completed(futures):
             _cb(f)
 
@@ -487,14 +515,17 @@ def main(
         help="Stage 1 market cap floor in USD (nasdaq source only)"),
     min_volume: float = typer.Option(500_000, "--min-volume",
         help="Stage 1 average daily volume floor (nasdaq source only)"),
-    deep:       bool = typer.Option(False, "--deep",
+    deep:       bool  = typer.Option(False, "--deep",
         help="Use FMP for richer data (requires FMP_API_KEY)"),
-    dry_run:    bool = typer.Option(False, "--dry-run",
+    dry_run:    bool  = typer.Option(False, "--dry-run",
         help="Validate config and universe only, no analysis"),
-    resume:     bool = typer.Option(True, "--resume/--no-resume",
+    resume:     bool  = typer.Option(True, "--resume/--no-resume",
         help="Resume from today's checkpoint if present"),
-    portfolios: bool = typer.Option(True, "--portfolios/--no-portfolios",
+    portfolios: bool  = typer.Option(True, "--portfolios/--no-portfolios",
         help="Also run portfolio construction for all 5 funds"),
+    delay:      float = typer.Option(0.0, "--delay",
+        help="Seconds to sleep between requests per worker. "
+             "Use 1.0–2.0 for overnight full-market runs to avoid throttling."),
 ):
     """
     Grade every ticker in the investable universe and save results for the dashboard.
@@ -532,7 +563,7 @@ def main(
                    f"(cap>${min_market_cap/1e6:.0f}M, vol>{min_volume/1e3:.0f}K) "
                    f"with {workers} workers …")
         universe = _quick_screen_parallel(
-            raw, fetcher._yf, workers, min_market_cap, min_volume
+            raw, fetcher._yf, workers, min_market_cap, min_volume, delay
         )
         typer.echo(f"Stage 1 survivors: {len(universe)} tickers")
     elif source == "sp500":
@@ -562,7 +593,7 @@ def main(
 
     # ── Full parallel analysis ────────────────────────────────
     ticker_results = _grade_parallel(
-        universe, config, fetcher, workers, existing, out_dir
+        universe, config, fetcher, workers, existing, out_dir, delay
     )
 
     # ── Grade changes ─────────────────────────────────────────
