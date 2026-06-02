@@ -96,8 +96,8 @@ def format_terminal(result: GrahamResult) -> str:
     header = f"{_BOLD}{result.ticker}{_RESET} — Graham Evaluation ({result.as_of})  Price: {_BOLD}${price:.2f}{_RESET}"
     if result.company_name and result.company_name != result.ticker:
         header += f"  {_DIM}{result.company_name}{_RESET}"
-    if result.eps_source == "fmp":
-        header += f"  {_DIM}[EPS history: FMP]{_RESET}"
+    if result.eps_source != "yfinance":
+        header += f"  {_DIM}[EPS: {result.eps_source}]{_RESET}"
     lines.append(header)
     lines.append(_wide_sep("═"))
 

@@ -75,7 +75,7 @@ class GrahamFetcher:
             "annual_eps":          annual_eps,   # [(year, eps), ...] newest-first
             "dividend_years":      div_years,    # set of calendar years with payments
             "as_of":               date.today().isoformat(),
-            "eps_source":          "fmp" if self._fmp else "yfinance",
+            "eps_source":          self._eps_source(annual_eps),
         }
 
     # ── Balance sheet ────────────────────────────────────────────────────────
@@ -163,7 +163,18 @@ class GrahamFetcher:
             if eps is not None:
                 eps_by_year[year] = eps
 
-        # 3. yfinance .earnings (deprecated but sometimes adds older years)
+        # 3. EDGAR XBRL facts — free, no key required, up to 15+ years
+        if len(eps_by_year) < 10:
+            try:
+                from stockgrader.graham.edgar_provider import fetch_annual_eps
+                edgar_eps = fetch_annual_eps(ticker, years=10)
+                for year, eps in edgar_eps:
+                    if year not in eps_by_year:
+                        eps_by_year[year] = eps
+            except Exception as exc:
+                logger.debug("EDGAR EPS supplement failed for %s: %s", ticker, exc)
+
+        # 4. yfinance .earnings (deprecated but sometimes adds older years)
         if len(eps_by_year) < 5:
             try:
                 with warnings.catch_warnings():
@@ -269,6 +280,14 @@ class GrahamFetcher:
             except (TypeError, ValueError):
                 pass
         return None
+
+    def _eps_source(self, annual_eps: list) -> str:
+        n = len(annual_eps)
+        if n >= 10:
+            return "edgar+fmp" if self._fmp else "edgar"
+        if n >= 5 and self._fmp:
+            return "fmp"
+        return "yfinance"
 
     def _dividend_years(self, dividends: pd.Series) -> set[int]:
         """Return the set of calendar years in which at least one dividend was paid."""
