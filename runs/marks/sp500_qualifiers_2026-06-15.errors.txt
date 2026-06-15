@@ -1,0 +1,4 @@
+WARNING stockgrader.data.fmp_provider: FMP rate-limit hit — disabling FMP for 10 minutes, falling back to yfinance.
+WARNING edgar.core: No company facts found on url https://data.sec.gov/api/xbrl/companyfacts/CIK0001137390.json
+WARNING stockgrader.data.fmp_provider: FMP rate-limit hit — disabling FMP for 10 minutes, falling back to yfinance.
+WARNING stockgrader.data.fmp_provider: FMP rate-limit hit — disabling FMP for 10 minutes, falling back to yfinance.
