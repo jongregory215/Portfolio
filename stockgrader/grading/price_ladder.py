@@ -33,7 +33,80 @@ logger = logging.getLogger(__name__)
 # Growth rate hard caps (prevents unrealistic DCF inflation)
 _MAX_GROWTH_STAGE1  = 0.35   # 35% max explicit-period growth
 _MIN_WACC           = 0.05   # 5% minimum discount rate
+_MAX_WACC           = 0.35   # 35% maximum discount rate (prevents extreme overvaluation)
 _MIN_TERMINAL_SPREAD = 0.01  # WACC must exceed terminal growth by at least 1%
+
+
+# ──────────────────────────────────────────────────────────────
+# Distress adjustment
+# ──────────────────────────────────────────────────────────────
+
+def _distress_adjusted_wacc(
+    base_wacc: float,
+    altman_z: float | None,
+) -> float:
+    """
+    Adjust WACC upward for financially distressed companies.
+
+    Altman Z-Score zones:
+      Z ≥ 2.99: Safe zone → no adjustment
+      1.81–2.99: Grey zone → +200 bps spread
+      1.10–1.81: Distress zone → +500 bps spread
+      Z < 1.10: Bankruptcy zone → +1000 bps spread
+
+    Also caps total WACC at _MAX_WACC to prevent extreme overvaluation.
+    """
+    if altman_z is None:
+        return base_wacc
+
+    # Map Altman Z to bankruptcy spread
+    if altman_z >= 2.99:
+        spread = 0.00
+    elif altman_z >= 1.81:
+        spread = 0.02   # Grey zone: +200 bps
+    elif altman_z >= 1.10:
+        spread = 0.05   # Distress: +500 bps
+    else:
+        spread = 0.10   # Bankruptcy zone: +1000 bps
+
+    adjusted = base_wacc + spread
+    # Cap at maximum to prevent infinite/nonsensical discounting
+    return min(adjusted, _MAX_WACC)
+
+
+def _distress_pe_cap(
+    peer_pe: float | None,
+    altman_z: float | None,
+) -> float | None:
+    """
+    Cap P/E multiple for distressed companies.
+
+    For healthy companies: no cap, use peer median or default.
+    For distressed companies: apply distress-based caps:
+      Altman Z < 1.10 (bankruptcy zone): cap at 6x
+      Altman Z 1.10–1.81 (distress zone): cap at 10x
+      Altman Z ≥ 1.81: no cap
+
+    Returns the capped P/E, or None if insufficient data.
+    """
+    if peer_pe is None:
+        return None
+
+    if altman_z is None:
+        return peer_pe
+
+    # Apply caps based on distress level
+    if altman_z < 1.10:
+        # Bankruptcy zone: very tight cap
+        cap = 6.0
+    elif altman_z < 1.81:
+        # Distress zone: moderate cap
+        cap = 10.0
+    else:
+        # Safe/grey zone: no cap
+        return peer_pe
+
+    return min(peer_pe, cap)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -256,6 +329,11 @@ def _extract_inputs(data: dict, config: dict) -> dict[str, Any]:
     if wacc is None:
         wacc = rf + beta * erp
 
+    # Adjust WACC for financial distress (bankruptcy risk)
+    altman_z = _f(data.get("altman_z"))
+    if altman_z is not None:
+        wacc = _distress_adjusted_wacc(wacc, altman_z)
+
     price       = _f(data.get("price"))
     market_cap  = _f(data.get("market_cap"))
     forward_eps = _f(data.get("forward_eps"))
@@ -353,8 +431,18 @@ def build_price_ladder(
     # ── 1. DCF fair value ─────────────────────────────────────
     fv_dcf: float | None = None
     data_completeness = _f(data.get("data_completeness")) or 1.0
+    altman_z = _f(data.get("altman_z"))
 
-    if inp["fcf_per_share"] and inp["fcf_per_share"] > 0:
+    # Skip DCF entirely for distressed companies (Altman Z < 1.81)
+    # DCF assumes recovery; distressed companies need multiples-only valuation
+    if altman_z is not None and altman_z < 1.81:
+        logger.info(
+            "Altman Z %.2f < 1.81 (distress zone) — skipping DCF, "
+            "using multiples-only valuation for %s.",
+            altman_z, data.get("ticker", "?"),
+        )
+        fv_dcf = None
+    elif inp["fcf_per_share"] and inp["fcf_per_share"] > 0:
         fv_dcf = _dcf_intrinsic_value(
             fcf_per_share   = inp["fcf_per_share"],
             growth_stage1   = inp["growth_base"],
@@ -403,12 +491,21 @@ def build_price_ladder(
             g = inp["growth_base"]
             peer_pe = max(10.0, min(35.0, 15.0 + g * 100))   # crude PEG-based floor
 
+        # Cap P/E for distressed companies to prevent inflated valuations
+        peer_pe = _distress_pe_cap(peer_pe, altman_z)
+        if peer_pe is None:
+            peer_pe = 8.0  # Fallback for distressed companies
+
         qa = bool(fv_cfg.get("margin_of_safety", {}).get("quality_adjustment", True))
         qs = float(fv_cfg.get("margin_of_safety", {}).get("quality_band_scale", 0.50))
         if qa:
             quality_fraction = max(0.0, (fundamental_score - 50.0) / 50.0)
             premium          = quality_fraction * 0.20
-            justified_pe     = peer_pe * (1.0 + premium)
+            # For distressed companies, disable quality premium (no moat)
+            if altman_z is not None and altman_z < 1.81:
+                justified_pe = peer_pe  # No quality adjustment for distressed
+            else:
+                justified_pe = peer_pe * (1.0 + premium)
         else:
             justified_pe = peer_pe
 
