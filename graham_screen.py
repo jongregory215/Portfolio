@@ -92,6 +92,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Show debug logging",
     )
+    p.add_argument(
+        "--qualifiers-only", "-q",
+        action="store_true",
+        help="Only show stocks that qualify as Defensive and/or Enterprising",
+    )
     return p.parse_args()
 
 
@@ -274,6 +279,15 @@ def main() -> None:
     if not results:
         print("No results to display.", file=sys.stderr)
         sys.exit(1)
+
+    if args.qualifiers_only:
+        results = [
+            r for r in results
+            if r.defensive.verdict == "Qualifies" or r.enterprising.verdict == "Qualifies"
+        ]
+        if not results:
+            print("No stocks qualified as Defensive or Enterprising.")
+            return
 
     if args.output == "summary":
         print(format_summary(results))

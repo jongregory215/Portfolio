@@ -96,6 +96,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Show debug logging",
     )
+    p.add_argument(
+        "--qualifiers-only", "-q",
+        action="store_true",
+        help="Only show stocks rated 'Worth a Closer Look' or 'Compelling Opportunity'",
+    )
     return p.parse_args()
 
 
@@ -256,6 +261,12 @@ def main() -> None:
     if not results:
         print("No results to display.", file=sys.stderr)
         sys.exit(1)
+
+    if args.qualifiers_only:
+        results = [r for r in results if r.verdict != "Pass"]
+        if not results:
+            print("No stocks rated 'Worth a Closer Look' or better.")
+            return
 
     if args.output == "summary":
         print(format_summary(results))
