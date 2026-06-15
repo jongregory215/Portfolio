@@ -63,9 +63,12 @@ class FMPProvider(DataProvider):
         self._universe_ttl = cfg["ttl"]["universe"]
         self._peer_ttl     = cfg["ttl"]["peer_list"]
         self._session      = _build_session()
+        self._rate_limited_until: float = 0.0
 
     @property
     def _available(self) -> bool:
+        if time.time() < self._rate_limited_until:
+            return False
         return bool(self.api_key)
 
     # ── Core request ──────────────────────────────────────────
@@ -98,8 +101,9 @@ class FMPProvider(DataProvider):
             return None
 
         if resp.status_code == 429:
-            logger.warning("FMP rate-limit — sleeping 60s.")
-            time.sleep(60)
+            # Disable FMP for 10 minutes rather than blocking the whole run
+            self._rate_limited_until = time.time() + 600
+            logger.warning("FMP rate-limit hit — disabling FMP for 10 minutes, falling back to yfinance.")
             return None
         if resp.status_code == 404:
             logger.debug("FMP 404: %s", endpoint)

@@ -185,11 +185,72 @@ def format_markdown(result: GrahamResult) -> str:
     return "\n".join(lines)
 
 
+def format_summary(results: Sequence[GrahamResult]) -> str:
+    """Condensed table: one row per stock, sorted by defensive criteria met desc."""
+    lines: list[str] = []
+    lines.append("")
+    header = (
+        f"{'Ticker':<7} {'Company':<28} {'Price':>8}  "
+        f"{'Def':>5}  {'Ent':>5}  {'Qualifies'}"
+    )
+    lines.append(f"{_BOLD}{header}{_RESET}")
+    lines.append("─" * 70)
+
+    sorted_results = sorted(
+        results,
+        key=lambda r: (r.defensive.criteria_met, r.enterprising.criteria_met),
+        reverse=True,
+    )
+
+    for r in sorted_results:
+        d = r.defensive
+        e = r.enterprising
+
+        # Color the criteria count
+        def _score_color(met: int, total: int) -> str:
+            s = f"{met}/{total}"
+            if met == total:
+                return f"{_GREEN}{s}{_RESET}"
+            if met >= total // 2:
+                return f"{_YELLOW}{s}{_RESET}"
+            return f"{_RED}{s}{_RESET}"
+
+        d_both = d.verdict == "Qualifies" and e.verdict == "Qualifies"
+        d_only = d.verdict == "Qualifies"
+        e_only = e.verdict == "Qualifies"
+
+        if d_both:
+            verdict = f"{_GREEN}Both{_RESET}"
+        elif d_only:
+            verdict = f"{_GREEN}Defensive{_RESET}"
+        elif e_only:
+            verdict = f"{_YELLOW}Enterprising{_RESET}"
+        else:
+            verdict = f"{_DIM}Neither{_RESET}"
+
+        name = (r.company_name[:26] + "..") if len(r.company_name) > 28 else r.company_name
+        row = (
+            f"{r.ticker:<7} {name:<28} ${r.price:>7.2f}  "
+            f"{_score_color(d.criteria_met, d.total_criteria):>5}  "
+            f"{_score_color(e.criteria_met, e.total_criteria):>5}  "
+            f"{verdict}"
+        )
+        lines.append(row)
+
+    lines.append("")
+    qualifiers = [r for r in results if r.defensive.verdict == "Qualifies" or r.enterprising.verdict == "Qualifies"]
+    lines.append(f"  {_BOLD}{len(qualifiers)} qualifier(s){_RESET} out of {len(results)} stocks screened.")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def print_results(results: Sequence[GrahamResult], output: str = "terminal") -> None:
     for result in results:
         if output == "json":
             print(format_json(result))
         elif output == "markdown":
             print(format_markdown(result))
+        elif output == "summary":
+            pass  # handled separately — caller uses format_summary()
         else:
             print(format_terminal(result))
