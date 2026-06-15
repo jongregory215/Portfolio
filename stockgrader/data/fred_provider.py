@@ -77,3 +77,31 @@ class FREDProvider:
             "3mo":  self.get_risk_free_rate("3mo"),
             "10yr": self.get_risk_free_rate("10yr"),
         }
+
+    def get_latest(self, series_id: str) -> float | None:
+        """
+        Return the most recent value of an arbitrary FRED series (raw units,
+        not divided by 100), or None if FRED is unavailable.
+
+        Used for macro indicators (e.g. yield-curve spreads, credit spreads)
+        that don't fit the risk-free-rate-specific helpers above.
+        """
+        if not self.api_key:
+            return None
+
+        cache_key = self.cache.ticker_key("__fred__", f"latest_{series_id}")
+        cached = self.cache.get(cache_key, ttl=self._macro_ttl)
+        if cached is not None:
+            return float(cached)
+
+        try:
+            from fredapi import Fred  # type: ignore[import]
+            fred = Fred(api_key=self.api_key)
+            series = fred.get_series(series_id)
+            val = series.dropna().iloc[-1]
+            value = float(val)
+            self.cache.set(cache_key, value)
+            return value
+        except Exception as exc:
+            logger.warning("FRED request failed for %s: %s", series_id, exc)
+            return None
