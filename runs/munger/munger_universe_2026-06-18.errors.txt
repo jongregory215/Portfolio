@@ -1,0 +1,1 @@
+WARNING stockgrader.data.fmp_provider: FMP rate-limit hit — disabling FMP for 10 minutes, falling back to yfinance.
